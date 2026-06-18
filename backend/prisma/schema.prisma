@@ -1,0 +1,133 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum SessionStatus {
+  running
+  completed
+  failed
+}
+
+enum RiskLevel {
+  low
+  medium
+  high
+}
+
+model Session {
+  id           BigInt        @id @default(autoincrement())
+  session_uuid String        @unique @db.VarChar(64)
+  source_url   String?       @db.Text
+  status       SessionStatus @default(running)
+  started_at   DateTime      @default(now())
+  ended_at     DateTime?
+  created_at   DateTime      @default(now())
+  updated_at   DateTime      @updatedAt
+
+  posts       Post[]
+  user_scores UserScore[]
+
+  @@map("sessions")
+}
+
+model SocialUser {
+  id               BigInt   @id @default(autoincrement())
+  platform         String   @default("facebook") @db.VarChar(50)
+  external_user_id String?  @db.VarChar(255)
+  display_name     String?  @db.VarChar(255)
+  profile_url      String?  @db.Text
+  user_hash        String   @unique @db.VarChar(128)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  posts       Post[]
+  user_scores UserScore[]
+
+  @@map("social_users")
+}
+
+model Post {
+  id         BigInt   @id @default(autoincrement())
+  session_id BigInt
+  user_id    BigInt
+  post_hash  String   @db.VarChar(128)
+  content    String   @db.Text
+  post_url   String?  @db.Text
+  source_url String?  @db.Text
+  collected_at DateTime @default(now())
+  created_at DateTime @default(now())
+
+  session  Session      @relation(fields: [session_id], references: [id])
+  user     SocialUser   @relation(fields: [user_id], references: [id])
+  analysis PostAnalysis?
+
+  @@unique([session_id, post_hash])
+  @@index([user_id])
+  @@map("posts")
+}
+
+model PostAnalysis {
+  id                   BigInt   @id @default(autoincrement())
+  post_id              BigInt   @unique
+  toxicity_score       Decimal  @default(0) @db.Decimal(5, 4)
+  spam_score           Decimal  @default(0) @db.Decimal(5, 4)
+  manipulation_score   Decimal  @default(0) @db.Decimal(5, 4)
+  extremism_risk_score Decimal  @default(0) @db.Decimal(5, 4)
+  sentiment_score      Decimal  @default(0) @db.Decimal(5, 4)
+  label                String?  @db.VarChar(100)
+  explanation          String?  @db.Text
+  model_name           String?  @db.VarChar(100)
+  raw_response         Json?
+  created_at           DateTime @default(now())
+
+  post Post @relation(fields: [post_id], references: [id])
+
+  @@map("post_analysis")
+}
+
+// Caches AI analysis results by content hash only (independent of who posted
+// it), so identical text re-posted by other users/sessions reuses the same
+// scores instead of triggering another AI call.
+model AnalysisCache {
+  id                   BigInt   @id @default(autoincrement())
+  content_hash         String   @unique @db.VarChar(128)
+  toxicity_score       Decimal  @default(0) @db.Decimal(5, 4)
+  spam_score           Decimal  @default(0) @db.Decimal(5, 4)
+  manipulation_score   Decimal  @default(0) @db.Decimal(5, 4)
+  extremism_risk_score Decimal  @default(0) @db.Decimal(5, 4)
+  sentiment_score      Decimal  @default(0) @db.Decimal(5, 4)
+  label                String?  @db.VarChar(100)
+  explanation          String?  @db.Text
+  model_name           String?  @db.VarChar(100)
+  hit_count            Int      @default(1)
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+
+  @@map("analysis_cache")
+}
+
+model UserScore {
+  id                 BigInt    @id @default(autoincrement())
+  session_id         BigInt
+  user_id            BigInt
+  avg_toxicity       Decimal   @default(0) @db.Decimal(5, 4)
+  max_toxicity       Decimal   @default(0) @db.Decimal(5, 4)
+  avg_spam           Decimal   @default(0) @db.Decimal(5, 4)
+  avg_manipulation   Decimal   @default(0) @db.Decimal(5, 4)
+  avg_extremism_risk Decimal   @default(0) @db.Decimal(5, 4)
+  overall_risk_score Decimal   @default(0) @db.Decimal(5, 4)
+  post_count         Int       @default(0)
+  risk_level         RiskLevel @default(low)
+  updated_at         DateTime  @updatedAt
+
+  session Session    @relation(fields: [session_id], references: [id])
+  user    SocialUser @relation(fields: [user_id], references: [id])
+
+  @@unique([session_id, user_id], map: "unique_session_user")
+  @@map("user_scores")
+}

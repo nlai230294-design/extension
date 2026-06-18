@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Social Post Analyzer",
+  "version": "0.1.0",
+  "description": "Phân tích chỉ số an toàn nội dung (toxicity, spam, manipulation, extremism-risk) của bài đăng trong nhóm Facebook. Kết quả AI chỉ mang tính tham khảo, cần kiểm duyệt viên xem xét.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": [
+    "https://*.facebook.com/*",
+    "http://localhost:3000/*"
+  ],
+  "action": {
+    "default_popup": "index.html"
+  },
+  "background": {
+    "service_worker": "src/background/serviceWorker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*.facebook.com/groups/*"],
+      "js": ["src/content/content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

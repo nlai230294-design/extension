@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Write-Output \"START\"; Get-ChildItem -Force -Path . | ForEach-Object { $_.Name }; Write-Output \"END\")"
+    ]
+  }
+}
