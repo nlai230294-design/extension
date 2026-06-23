@@ -48,7 +48,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       }
     } catch (error) {
       console.error(`${LOG_PREFIX} error handling ${message.type}:`, error);
-      sendResponse({ ok: false, error: error.message || String(error) });
+      // Forward the HTTP status (when available) so the popup can tell a real
+      // failure apart from "session not found" (404) and react accordingly.
+      sendResponse({
+        ok: false,
+        error: error.message || String(error),
+        status: error.response?.status,
+      });
     }
   })();
 

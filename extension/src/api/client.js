@@ -25,6 +25,10 @@ http.interceptors.response.use(
         `${LOG_PREFIX} <- ${error.response.status} ${error.config?.url}`,
         error.response.data
       );
+      // Surface the backend's own message ("Session ... not found") instead of
+      // axios's generic "Request failed with status code 404" so callers can
+      // show something meaningful to the user.
+      error.message = error.response.data?.error || error.message;
     } else {
       console.error(`${LOG_PREFIX} request failed: ${error.message} (${error.config?.url})`);
     }

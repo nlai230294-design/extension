@@ -23,7 +23,9 @@ function sendToBackground(message, timeoutMs = 6000) {
         return;
       }
       if (!response?.ok) {
-        reject(new Error(response?.error || "Unknown error"));
+        const error = new Error(response?.error || "Unknown error");
+        error.status = response?.status;
+        reject(error);
         return;
       }
       resolve(response.data);
@@ -157,6 +159,17 @@ function App() {
       console.log(`${LOG_PREFIX} fetched results:`, data);
       setResults(data);
     } catch (err) {
+      if (err.status === 404) {
+        // Session không còn tồn tại ở backend (ví dụ DB đã được reset) - đây
+        // không phải lỗi cần báo cho người dùng, chỉ đơn giản là chưa có dữ
+        // liệu nên dọn session cũ và quay về trạng thái rỗng.
+        console.warn(`${LOG_PREFIX} session ${id} not found, resetting to idle`);
+        chrome.storage.local.remove(STORAGE_KEY);
+        setSessionId(null);
+        setStatus("idle");
+        setResults(null);
+        return;
+      }
       console.error(`${LOG_PREFIX} fetchResults failed:`, err);
       setError(err.message);
     }
@@ -167,19 +180,7 @@ function App() {
 
     let cancelled = false;
     const poll = () => {
-      sendToBackground({ type: MESSAGE_TYPES.GET_RESULTS, sessionId })
-        .then((data) => {
-          if (!cancelled) {
-            console.log(`${LOG_PREFIX} poll results:`, data);
-            setResults(data);
-          }
-        })
-        .catch((err) => {
-          if (!cancelled) {
-            console.error(`${LOG_PREFIX} poll failed:`, err);
-            setError(err.message);
-          }
-        });
+      if (!cancelled) fetchResults(sessionId);
     };
 
     console.log(`${LOG_PREFIX} starting polling (session=${sessionId})`);

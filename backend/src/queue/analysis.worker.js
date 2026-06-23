@@ -117,7 +117,12 @@ export function createAnalysisWorker() {
   });
 
   worker.on("failed", (job, error) => {
-    logger.error(`Job ${job?.id} failed:`, error.message);
+    const postsCount = job?.data?.comment_ids?.length ?? "?";
+    const maxAttempts = job?.opts?.attempts ?? "?";
+    logger.error(
+      `Job ${job?.id} failed (session=${job?.data?.session_id}, posts=${postsCount}, ` +
+        `attempt ${job?.attemptsMade}/${maxAttempts}): ${error.message}`
+    );
   });
 
   return worker;
