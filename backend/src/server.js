@@ -5,8 +5,8 @@ import { createAnalysisWorker } from "./queue/analysis.worker.js";
 const app = createApp();
 const worker = createAnalysisWorker();
 
-const server = app.listen(env.port, () => {
-  console.log(`Backend listening on port ${env.port} (AI_PROVIDER=${env.aiProvider})`);
+const server = app.listen(env.port, env.host, () => {
+  console.log(`Backend listening on ${env.host}:${env.port} (AI_PROVIDER=${env.aiProvider})`);
 });
 
 function shutdown() {

@@ -1,15 +1,28 @@
 {
   "manifest_version": 3,
   "name": "Social Post Analyzer",
-  "version": "0.1.0",
-  "description": "Phân tích chỉ số an toàn nội dung (toxicity, spam, manipulation, extremism-risk) của bài đăng trong nhóm Facebook. Kết quả AI chỉ mang tính tham khảo, cần kiểm duyệt viên xem xét.",
+  "version": "1.0.0",
+  "description": "Hỗ trợ kiểm duyệt viên đánh giá nhanh mức độ an toàn nội dung (độc hại, spam, thao túng, cực đoan) của bài đăng trong nhóm Facebook bằng AI. Kết quả chỉ mang tính tham khảo.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": [
     "https://*.facebook.com/*",
-    "http://localhost:3000/*"
+    "https://extension-fb.xyz/*"
   ],
   "action": {
-    "default_popup": "index.html"
+    "default_popup": "index.html",
+    "default_title": "Social Post Analyzer",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
   },
   "background": {
     "service_worker": "src/background/serviceWorker.js",

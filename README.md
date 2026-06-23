@@ -35,9 +35,22 @@ project-root/
   (chỉ API, chưa có UI riêng).
 
 Chưa triển khai:
-- Tích hợp AI thật (Anthropic/OpenAI) - đã có sẵn điểm cắm trong
-  `backend/src/services/ai.service.js`, `AI_PROVIDER` vẫn đang là `mock`.
-- UI dashboard cho moderator, đóng gói icon, Chrome Web Store, deploy.
+- UI dashboard cho moderator.
+- Deploy backend lên domain HTTPS thật (hiện vẫn chạy `localhost:3000`) - cần xong trước khi nộp
+  lên Chrome Web Store, xem mục **Chuẩn bị publish** dưới đây.
+
+## Chuẩn bị publish lên Chrome Web Store
+
+- `extension/manifest.json`: đã set version `1.0.0`, icon (placeholder, **cần thay logo thật** -
+  xem `extension/scripts/generate-placeholder-icons.js`), `host_permissions` trỏ tới
+  `extension/production.config.js` (`PRODUCTION_BACKEND_ORIGIN`) - **thay domain placeholder bằng
+  domain backend thật sau khi deploy**.
+- Build bản publish: `cd extension && npm run build:production` (khác với `npm run build` thông
+  thường - lệnh đó vẫn trỏ về `localhost:3000` để test dev như cũ). Đóng gói thư mục
+  `extension/dist` thành `.zip` để upload.
+- Nội dung mô tả/store listing: [docs/store-listing.md](docs/store-listing.md).
+- Chính sách quyền riêng tư (cần host ở URL công khai trước khi nộp):
+  [docs/privacy-policy.md](docs/privacy-policy.md).
 
 ## Yêu cầu hệ thống
 

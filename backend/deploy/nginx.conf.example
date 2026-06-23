@@ -1,0 +1,15 @@
+# Copy nội dung này vào /etc/nginx/sites-available/extension-fb.xyz trên VPS,
+# rồi link sang sites-enabled (xem docs/deploy-vps.md). Sau khi chạy certbot,
+# certbot sẽ tự thêm block listen 443 ssl + redirect HTTP -> HTTPS vào đây.
+server {
+    listen 80;
+    server_name extension-fb.xyz;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
