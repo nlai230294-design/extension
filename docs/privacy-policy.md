@@ -1,6 +1,6 @@
 # Chính sách quyền riêng tư — Social Post Analyzer
 
-**Ngày có hiệu lực:** <ĐIỀN NGÀY PUBLISH>
+**Ngày có hiệu lực:** 24.06.2026
 **Liên hệ:** nlai230294@gmail.com
 
 > Tài liệu này cần được host ở một URL công khai (ví dụ GitHub Pages, Google Sites) và điền vào
