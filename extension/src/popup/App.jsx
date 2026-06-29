@@ -316,37 +316,38 @@ function App() {
     <div className="app">
       <header className="app__header">
         <div className="app__brand">
-          <span className="app__logo">SCA</span>
+          <span className="app__logo">SPA</span>
           <h1>Social Post Analyzer</h1>
         </div>
-        <p className="app__disclaimer">
-          Kết quả phân tích AI chỉ mang tính tham khảo về nội dung, không kết luận về cá nhân.
-          Cần kiểm duyệt viên xem xét trước khi hành động.
-        </p>
       </header>
 
-      <div className="tabs">
-        <button
-          className={`tabs__tab ${activeTab === "session" ? "tabs__tab--active" : ""}`}
-          onClick={() => setActiveTab("session")}
-        >
-          Phiên hiện tại
-        </button>
-        <button
-          className={`tabs__tab ${activeTab === "sessions" ? "tabs__tab--active" : ""}`}
-          onClick={() => setActiveTab("sessions")}
-        >
-          Tất cả phiên
-        </button>
-      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "20px" }}>
+        <div className="tabs">
+          <button
+            className={`tabs__tab ${activeTab === "session" ? "tabs__tab--active" : ""}`}
+            style={{ whiteSpace: "nowrap" }}
+            onClick={() => setActiveTab("session")}
+          >
+            Phiên hiện tại
+          </button>
+          <button
+            className={`tabs__tab ${activeTab === "sessions" ? "tabs__tab--active" : ""}`}
+            style={{ whiteSpace: "nowrap" }}
+            onClick={() => setActiveTab("sessions")}
+          >
+            Tất cả phiên
+          </button>
+        </div>
 
-      <div className="tabs">
-        <button
-          className={`tabs__tab ${activeTab === "all" ? "tabs__tab--active" : ""}`}
-          onClick={() => setActiveTab("all")}
-        >
-          Tổng hợp toàn hệ thống
-        </button>
+        <div className="tabs">
+          <button
+            className={`tabs__tab ${activeTab === "all" ? "tabs__tab--active" : ""}`}
+            style={{ whiteSpace: "nowrap" }}
+            onClick={() => setActiveTab("all")}
+          >
+            Tổng hợp
+          </button>
+        </div>
       </div>
 
       {error && <p className="app__error">{error}</p>}
