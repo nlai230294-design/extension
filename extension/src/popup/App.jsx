@@ -1,13 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { BACKEND_BASE_URL, FACEBOOK_GROUP_URL_PATTERN, MESSAGE_TYPES, POLL_INTERVAL_MS } from "../utils/constants.js";
 import AllUsersTable from "./components/AllUsersTable.jsx";
 import CollectionStats from "./components/CollectionStats.jsx";
 import ControlPanel from "./components/ControlPanel.jsx";
 import RiskFilter from "./components/RiskFilter.jsx";
+import RunningSessionsList from "./components/RunningSessionsList.jsx";
 import UserScoreTable from "./components/UserScoreTable.jsx";
 
-const STORAGE_KEY = "social_analyzer_session";
 const LOG_PREFIX = "[SCA:popup]";
 
 function sendToBackground(message, timeoutMs = 6000) {
@@ -90,51 +90,82 @@ async function sendToTab(tabId, message) {
 }
 
 function App() {
-  const [activeTab, setActiveTab] = useState("session"); // "session" | "all"
-  const [sessionId, setSessionId] = useState(null);
-  const [status, setStatus] = useState("idle"); // idle | running | stopped
+  const [activeTab, setActiveTab] = useState("session"); // UI tab: "session" | "all"
+  const [currentTabId, setCurrentTabId] = useState(null); // tab Chrome bạn đang xem ngay bây giờ
+  const [runningSessions, setRunningSessions] = useState({}); // { [tabId]: {sessionId, sourceUrl, acceptedCount, ...} }
+  const [viewingTabId, setViewingTabId] = useState(null); // session nào đang hiển thị kết quả trong popup
   const [results, setResults] = useState(null);
   const [riskFilter, setRiskFilter] = useState("all");
   const [allUsers, setAllUsers] = useState(null);
   const [allUsersFilter, setAllUsersFilter] = useState("all");
   const [error, setError] = useState(null);
-  const pollRef = useRef(null);
 
-  useEffect(() => {
-    (async () => {
-      const stored = await new Promise((resolve) => chrome.storage.local.get([STORAGE_KEY], resolve));
-      const saved = stored[STORAGE_KEY];
+  const refreshRunningSessions = async () => {
+    try {
+      const map = await sendToBackground({ type: MESSAGE_TYPES.GET_ACTIVE_SESSIONS });
+      setRunningSessions(map || {});
+      return map || {};
+    } catch (err) {
+      console.warn(`${LOG_PREFIX} refreshRunningSessions failed:`, err.message);
+      return {};
+    }
+  };
 
-      if (saved?.sessionId) {
-        console.log(`${LOG_PREFIX} restored session from storage:`, saved);
-        setSessionId(saved.sessionId);
-        setStatus(saved.status || "idle");
-        fetchResults(saved.sessionId);
+  const fetchResultsForSession = async (sessionId) => {
+    try {
+      const data = await sendToBackground({ type: MESSAGE_TYPES.GET_RESULTS, sessionId });
+      setResults(data);
+      setError(null);
+    } catch (err) {
+      if (err.status === 404) {
+        // Session không còn tồn tại ở backend (ví dụ DB đã được reset) - đây
+        // không phải lỗi cần báo cho người dùng, chỉ đơn giản là chưa có dữ liệu.
+        console.warn(`${LOG_PREFIX} session ${sessionId} not found`);
+        setResults(null);
         return;
       }
+      console.error(`${LOG_PREFIX} fetchResultsForSession failed:`, err);
+      setError(err.message);
+    }
+  };
 
-      // No stored session — load the most recent completed session from backend.
+  // Mount: mặc định LUÔN xem session của chính tab đang mở popup - không tự
+  // động nhảy sang session của tab khác dù tab khác đó đang chạy, để tránh
+  // hiện nhầm kết quả của session khác vào tab không liên quan.
+  useEffect(() => {
+    (async () => {
+      const tab = await getActiveTab().catch(() => null);
+      const tabId = tab ? String(tab.id) : null;
+      if (tabId) {
+        setCurrentTabId(tabId);
+        setViewingTabId(tabId);
+      }
+
+      const map = await refreshRunningSessions();
+      if (tabId && map[tabId]) return; // có session đang chạy cho tab này - poll effect sẽ tự fetch
+
+      // Tab hiện tại không chạy gì. Nếu có session khác đang chạy ở tab khác,
+      // KHÔNG tự ý hiện kết quả của session đó vào đây - giữ trống/idle.
+      if (Object.keys(map).length > 0) return;
+
+      // Không có session nào đang chạy ở bất kỳ đâu - thử nạp lại session gần
+      // nhất đã hoàn tất (nói chung, không gắn với tab nào) để xem lại kết quả
+      // cũ thay vì màn hình trống hoàn toàn.
       try {
         const res = await fetch(`${BACKEND_BASE_URL}/api/sessions?limit=10`, {
           signal: AbortSignal.timeout(3000),
         });
         if (!res.ok) return;
-        const sessions = await res.json();
-        const last = sessions.find((s) => s.total_posts > 0);
+        const list = await res.json();
+        const last = list.find((s) => s.total_posts > 0);
         if (!last) return;
-        console.log(`${LOG_PREFIX} loaded last session from backend:`, last.session_id);
-        setSessionId(last.session_id);
-        setStatus("stopped");
-        fetchResults(last.session_id);
+        console.log(`${LOG_PREFIX} loaded last completed session from backend:`, last.session_id);
+        await fetchResultsForSession(last.session_id);
       } catch (err) {
         console.warn(`${LOG_PREFIX} could not load previous session:`, err.message);
       }
     })();
   }, []);
-
-  useEffect(() => {
-    chrome.storage.local.set({ [STORAGE_KEY]: { sessionId, status } });
-  }, [sessionId, status]);
 
   const loadAllUsers = async () => {
     try {
@@ -153,49 +184,28 @@ function App() {
     if (activeTab === "all") loadAllUsers();
   }, [activeTab]);
 
-  const fetchResults = async (id) => {
-    try {
-      const data = await sendToBackground({ type: MESSAGE_TYPES.GET_RESULTS, sessionId: id });
-      console.log(`${LOG_PREFIX} fetched results:`, data);
-      setResults(data);
-    } catch (err) {
-      if (err.status === 404) {
-        // Session không còn tồn tại ở backend (ví dụ DB đã được reset) - đây
-        // không phải lỗi cần báo cho người dùng, chỉ đơn giản là chưa có dữ
-        // liệu nên dọn session cũ và quay về trạng thái rỗng.
-        console.warn(`${LOG_PREFIX} session ${id} not found, resetting to idle`);
-        chrome.storage.local.remove(STORAGE_KEY);
-        setSessionId(null);
-        setStatus("idle");
-        setResults(null);
-        return;
-      }
-      console.error(`${LOG_PREFIX} fetchResults failed:`, err);
-      setError(err.message);
-    }
-  };
-
+  // Poll: làm mới danh sách session đang chạy (để phát hiện tab bị đóng ở
+  // nơi khác) và kết quả của session đang xem, nếu có.
   useEffect(() => {
-    if (status !== "running" || !sessionId) return undefined;
-
     let cancelled = false;
-    const poll = () => {
-      if (!cancelled) fetchResults(sessionId);
+
+    const poll = async () => {
+      if (cancelled) return;
+      const map = await refreshRunningSessions();
+      if (cancelled) return;
+      const entry = viewingTabId ? map[viewingTabId] : null;
+      if (entry) await fetchResultsForSession(entry.sessionId);
     };
 
-    console.log(`${LOG_PREFIX} starting polling (session=${sessionId})`);
+    console.log(`${LOG_PREFIX} starting polling (viewing=${viewingTabId})`);
     poll();
-    pollRef.current = setInterval(poll, POLL_INTERVAL_MS);
+    const intervalId = setInterval(poll, POLL_INTERVAL_MS);
 
     return () => {
       cancelled = true;
-      if (pollRef.current) {
-        console.log(`${LOG_PREFIX} stopping polling`);
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
+      clearInterval(intervalId);
     };
-  }, [status, sessionId]);
+  }, [viewingTabId]);
 
   const handleStart = async () => {
     setError(null);
@@ -206,39 +216,84 @@ function App() {
           "Vui lòng mở một bài viết trong nhóm Facebook (facebook.com/groups/...) trước khi bắt đầu."
         );
       }
+      const tabId = String(tab.id);
+      setCurrentTabId(tabId);
+
+      if (runningSessions[tabId]) {
+        // Tab này đã có session đang chạy rồi - chỉ chuyển sang xem nó.
+        setViewingTabId(tabId);
+        return;
+      }
+
       console.log(`${LOG_PREFIX} starting session for ${tab.url}`);
       const data = await sendToBackground({
         type: MESSAGE_TYPES.CREATE_SESSION,
         sourceUrl: tab.url || "",
+        tabId,
       });
       console.log(`${LOG_PREFIX} session created:`, data);
-      setSessionId(data.session_id);
-      setStatus("running");
       await sendToTab(tab.id, { type: MESSAGE_TYPES.START_COLLECTION, sessionId: data.session_id });
+      await refreshRunningSessions();
+      setViewingTabId(tabId);
     } catch (err) {
       console.error(`${LOG_PREFIX} handleStart failed:`, err);
       setError(err.message);
     }
   };
 
-  const handleStop = async () => {
+  // Dùng chung cho cả nút "Dừng" của tab hiện tại và nút "Dừng" của từng dòng
+  // trong danh sách "Đang chạy" - luôn nhận đúng tabId/sessionId cần dừng,
+  // không còn dựa vào "tab đang active" hay state toàn cục dễ gây nhầm session.
+  const handleStopSession = async (tabId, sessionId) => {
     setError(null);
     try {
-      const tab = await getActiveTab();
       try {
-        await sendToTab(tab.id, { type: MESSAGE_TYPES.STOP_COLLECTION });
+        await sendToTab(Number(tabId), { type: MESSAGE_TYPES.STOP_COLLECTION });
       } catch (err) {
-        // Best-effort - the content script may already be gone (tab closed/navigated away).
-        console.warn(`${LOG_PREFIX} failed to notify content script of stop:`, err);
+        // Best-effort - content script có thể đã không còn (tab đã đóng/điều hướng đi).
+        console.warn(`${LOG_PREFIX} failed to notify content script of stop (tab=${tabId}):`, err);
       }
-      if (sessionId) {
-        console.log(`${LOG_PREFIX} stopping session ${sessionId}`);
-        await sendToBackground({ type: MESSAGE_TYPES.STOP_SESSION, sessionId });
-        await fetchResults(sessionId);
+      console.log(`${LOG_PREFIX} stopping session ${sessionId} (tab=${tabId})`);
+      await sendToBackground({ type: MESSAGE_TYPES.STOP_SESSION, sessionId, tabId });
+      await refreshRunningSessions();
+      if (tabId === viewingTabId) {
+        // Lấy snapshot cuối cùng của ĐÚNG session vừa dừng - không tự chuyển
+        // sang xem session khác, dù session khác vẫn đang chạy.
+        await fetchResultsForSession(sessionId);
       }
-      setStatus("stopped");
     } catch (err) {
-      console.error(`${LOG_PREFIX} handleStop failed:`, err);
+      console.error(`${LOG_PREFIX} handleStopSession(${tabId}) failed:`, err);
+      setError(err.message);
+    }
+  };
+
+  const handleStop = () => {
+    if (!currentTabId || !runningSessions[currentTabId]) return Promise.resolve();
+    return handleStopSession(currentTabId, runningSessions[currentTabId].sessionId);
+  };
+
+  const handleStopAll = async () => {
+    setError(null);
+    const entries = Object.entries(runningSessions);
+    if (entries.length === 0) return;
+    try {
+      await Promise.all(
+        entries.map(([tabId]) =>
+          sendToTab(Number(tabId), { type: MESSAGE_TYPES.STOP_COLLECTION }).catch((err) => {
+            console.warn(`${LOG_PREFIX} failed to notify content script of stop (tab=${tabId}):`, err);
+          })
+        )
+      );
+      await sendToBackground({ type: MESSAGE_TYPES.STOP_ALL_SESSIONS });
+
+      // Nếu session đang xem nằm trong số vừa dừng, lấy snapshot cuối cùng
+      // của đúng nó - không tự chuyển sang xem gì khác.
+      const viewingEntry = viewingTabId ? entries.find(([tabId]) => tabId === viewingTabId) : null;
+      if (viewingEntry) await fetchResultsForSession(viewingEntry[1].sessionId);
+
+      await refreshRunningSessions();
+    } catch (err) {
+      console.error(`${LOG_PREFIX} handleStopAll failed:`, err);
       setError(err.message);
     }
   };
@@ -250,6 +305,12 @@ function App() {
   const filteredAllUsers = (allUsers || []).filter(
     (user) => allUsersFilter === "all" || user.latest_risk_level === allUsersFilter
   );
+
+  const runningSessionRows = Object.entries(runningSessions).map(([tabId, entry]) => ({
+    tabId,
+    ...entry,
+  }));
+  const controlStatus = currentTabId && runningSessions[currentTabId] ? "running" : "idle";
 
   return (
     <div className="app">
@@ -269,23 +330,32 @@ function App() {
           className={`tabs__tab ${activeTab === "session" ? "tabs__tab--active" : ""}`}
           onClick={() => setActiveTab("session")}
         >
-          Session hiện tại
+          Phiên hiện tại
         </button>
+        <button
+          className={`tabs__tab ${activeTab === "sessions" ? "tabs__tab--active" : ""}`}
+          onClick={() => setActiveTab("sessions")}
+        >
+          Tất cả phiên
+        </button>
+      </div>
+
+      <div className="tabs">
         <button
           className={`tabs__tab ${activeTab === "all" ? "tabs__tab--active" : ""}`}
           onClick={() => setActiveTab("all")}
         >
-          Tổng hợp
+          Tổng hợp toàn hệ thống
         </button>
       </div>
+
+      {error && <p className="app__error">{error}</p>}
 
       {activeTab === "session" && (
         <>
           <section className="card">
-            <ControlPanel status={status} onStart={handleStart} onStop={handleStop} />
+            <ControlPanel status={controlStatus} onStart={handleStart} onStop={handleStop} />
           </section>
-
-          {error && <p className="app__error">{error}</p>}
 
           {results && (
             <>
@@ -299,6 +369,36 @@ function App() {
             </>
           )}
         </>
+      )}
+
+      {activeTab === "sessions" && (
+        <section className="card">
+          <div className="tabs__toolbar">
+            <span className="running-sessions__title">Đang chạy ({runningSessionRows.length})</span>
+            <button
+              type="button"
+              className="btn btn--danger"
+              onClick={handleStopAll}
+              disabled={runningSessionRows.length === 0}
+            >
+              Dừng tất cả
+            </button>
+          </div>
+          {runningSessionRows.length > 0 ? (
+            <RunningSessionsList
+              sessions={runningSessionRows}
+              viewingTabId={viewingTabId}
+              currentTabId={currentTabId}
+              onView={(tabId) => {
+                setViewingTabId(tabId);
+                setActiveTab("session");
+              }}
+              onStop={handleStopSession}
+            />
+          ) : (
+            <p className="running-sessions__empty">Không có session nào đang chạy.</p>
+          )}
+        </section>
       )}
 
       {activeTab === "all" && (
