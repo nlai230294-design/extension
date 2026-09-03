@@ -9,7 +9,11 @@
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
-  "permissions": ["activeTab", "scripting", "storage"],
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
   "host_permissions": [
     "https://*.facebook.com/*",
     "https://extension-fb.xyz/*"
@@ -30,8 +34,12 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://*.facebook.com/groups/*"],
-      "js": ["src/content/content.js"],
+      "matches": [
+        "https://*.facebook.com/groups/*"
+      ],
+      "js": [
+        "src/content/content.js"
+      ],
       "run_at": "document_idle"
     }
   ]

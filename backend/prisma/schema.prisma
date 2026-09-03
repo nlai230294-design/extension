@@ -59,6 +59,10 @@ model Post {
   content    String   @db.Text
   post_url   String?  @db.Text
   source_url String?  @db.Text
+  // Chuỗi thời điểm đăng đúng như Facebook hiển thị (vd "5 giờ", "13 Tháng 6
+  // lúc 20:15"). Không parse ra DateTime vì FB hiển thị dạng tương đối/địa
+  // phương, ngày tuyệt đối chỉ hiện khi hover (ngoài DOM bài).
+  posted_at_text String? @db.VarChar(255)
   collected_at DateTime @default(now())
   created_at DateTime @default(now())
 
@@ -68,6 +72,10 @@ model Post {
 
   @@unique([session_id, post_hash])
   @@index([user_id])
+  // Dedup TOÀN HỆ THỐNG: cùng một bài (profile_url|content) chỉ tồn tại 1 lần
+  // trên toàn bộ session. UNIQUE vừa chặn trùng ở tầng DB, vừa là index cho
+  // việc tra cứu trùng lúc ingest (1 lần tra, không full scan).
+  @@unique([post_hash])
   @@map("posts")
 }
 

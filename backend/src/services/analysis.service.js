@@ -66,6 +66,7 @@ async function insertPost(session, item, hash) {
           content: item.content,
           post_url: item.post_url,
           source_url: item.source_url,
+          posted_at_text: item.posted_at_text,
         },
       });
     });
@@ -95,7 +96,7 @@ export async function ingestBatch(sessionUuid, items) {
   for (const item of items) {
     const hash = item.post_hash || postHash(item.profile_url, item.content);
 
-    if (await postHashExists(hash, session.id)) {
+    if (await postHashExists(hash)) {
       skipped_duplicates += 1;
       continue;
     }

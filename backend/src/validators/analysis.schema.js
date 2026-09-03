@@ -9,6 +9,7 @@ export const postItemSchema = z.object({
   content: z.string().min(1).max(POST_MAX_LENGTH),
   post_url: z.string().optional(),
   source_url: z.string().optional(),
+  posted_at_text: z.string().max(255).optional(),
   post_hash: z.string().optional(),
 });
 
@@ -24,4 +25,10 @@ export const createSessionSchema = z.object({
 export const paginationSchema = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(20),
   offset: z.coerce.number().int().min(0).default(0),
+});
+
+// Danh sách bài đăng của 1 user: phân trang + lọc theo từ khóa (tùy chọn).
+// keywords rỗng -> trả tất cả (limit mặc định 20).
+export const userPostsQuerySchema = paginationSchema.extend({
+  keywords: z.string().max(500).optional().default(""),
 });

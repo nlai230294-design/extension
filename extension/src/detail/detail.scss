@@ -115,6 +115,59 @@ body {
   letter-spacing: 0.05em;
 }
 
+.kw-highlight {
+  background: #fde68a;
+  color: #78350f;
+  padding: 0 1px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+.keyword-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+
+  &__input {
+    flex: 1;
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--text);
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    outline: none;
+
+    &:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+    }
+
+    &::placeholder {
+      color: var(--muted);
+    }
+  }
+
+  &__clear {
+    flex-shrink: 0;
+    padding: 8px 12px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--muted);
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+
+    &:hover {
+      color: var(--text);
+      border-color: var(--muted);
+    }
+  }
+}
+
 .risk-badge {
   display: inline-block;
   padding: 3px 10px;
@@ -285,6 +338,47 @@ body {
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.55;
+}
+
+.comment-table__link {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--primary);
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.comment-table__risk-col {
+  width: 92px;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+.post-risk {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+
+  &__icon {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+  }
+
+  &--low     { color: var(--low);    background: var(--low-bg);    }
+  &--medium  { color: var(--medium); background: var(--medium-bg); }
+  &--high    { color: var(--high);   background: var(--high-bg);   }
+  &--pending { color: var(--muted);  background: var(--bg);        }
 }
 
 .comment-table__time {

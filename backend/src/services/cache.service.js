@@ -1,10 +1,12 @@
 import { prisma } from "../db/prisma.js";
 
-// Session-scoped dedup: skip a post only if it was already collected in this
-// same session. The same post may appear in multiple sessions legitimately.
-export async function postHashExists(postHash, sessionId) {
-  const existing = await prisma.post.findUnique({
-    where: { session_id_post_hash: { session_id: sessionId, post_hash: postHash } },
+// Dedup toàn hệ thống: bỏ qua bài nếu post_hash (profile_url|content) đã từng
+// được thu thập ở BẤT KỲ session nào — không thu thập lại cùng một bài của cùng
+// một người quá 1 lần. Dùng index posts_post_hash_idx nên chỉ tốn 1 lần tra
+// cứu index, không phải full scan.
+export async function postHashExists(postHash) {
+  const existing = await prisma.post.findFirst({
+    where: { post_hash: postHash },
     select: { id: true },
   });
   return existing !== null;

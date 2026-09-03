@@ -1,5 +1,5 @@
 import { prisma } from "../db/prisma.js";
-import { RISK_THRESHOLDS, RISK_WEIGHTS } from "../utils/constants.js";
+import { computeOverallRiskScore, riskLevelFor } from "../utils/risk.js";
 import { createLogger } from "../utils/logger.js";
 
 const logger = createLogger("aggregation.service");
@@ -13,12 +13,6 @@ function average(values) {
 function maximum(values) {
   if (values.length === 0) return 0;
   return Number(Math.max(...values).toFixed(4));
-}
-
-function riskLevelFor(overallRiskScore) {
-  if (overallRiskScore >= RISK_THRESHOLDS.highMin) return "high";
-  if (overallRiskScore >= RISK_THRESHOLDS.mediumMin) return "medium";
-  return "low";
 }
 
 // Recomputes a single user's aggregate scores for a session from all of their
@@ -37,14 +31,12 @@ export async function recalcUserScores(sessionId, userId) {
   const avg_manipulation = average(analyzed.map((a) => Number(a.manipulation_score)));
   const avg_extremism_risk = average(analyzed.map((a) => Number(a.extremism_risk_score)));
 
-  const overall_risk_score = Number(
-    (
-      avg_toxicity * RISK_WEIGHTS.toxicity +
-      avg_spam * RISK_WEIGHTS.spam +
-      avg_manipulation * RISK_WEIGHTS.manipulation +
-      avg_extremism_risk * RISK_WEIGHTS.extremism_risk
-    ).toFixed(4)
-  );
+  const overall_risk_score = computeOverallRiskScore({
+    toxicity: avg_toxicity,
+    spam: avg_spam,
+    manipulation: avg_manipulation,
+    extremism_risk: avg_extremism_risk,
+  });
 
   const data = {
     avg_toxicity,

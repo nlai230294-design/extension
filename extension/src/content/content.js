@@ -5,6 +5,7 @@ import {
   OBSERVER_DEBOUNCE_MS,
   SCAN_INTERVAL_MS,
 } from "../utils/constants.js";
+import { matchesKeywords, parseKeywords } from "../utils/keywords.js";
 import { startAutoScroll, stopAutoScroll } from "./autoScroll.js";
 import { collectVisiblePosts } from "./collector.js";
 import { applyHighlights, clearHighlights } from "./highlighter.js";
@@ -16,6 +17,9 @@ let sessionId = null;
 let scanIntervalId = null;
 let highlightIntervalId = null;
 const seenKeys = new Set();
+// Bộ lọc từ khóa do người dùng nhập ở popup trước khi bắt đầu. Rỗng = thu
+// thập tất cả bài (hành vi mặc định cũ).
+let keywordFilter = [];
 
 function postKey(item) {
   return item.dom_key;
@@ -29,9 +33,16 @@ async function scanAndSubmit() {
 
   const MAX_CONTENT = 10000;
 
+  let filteredOut = 0;
   for (const post of visible) {
     const key = postKey(post);
     if (seenKeys.has(key)) continue;
+    // Không khớp bộ lọc từ khóa -> bỏ qua, KHÔNG đánh dấu seen để nếu nội dung
+    // được mở rộng ("Xem thêm") ở lần quét sau thì vẫn có cơ hội khớp lại.
+    if (!matchesKeywords(post.content, keywordFilter)) {
+      filteredOut += 1;
+      continue;
+    }
     seenKeys.add(key);
     newItems.push({
       client_post_id: crypto.randomUUID(),
@@ -40,7 +51,10 @@ async function scanAndSubmit() {
     });
   }
 
-  console.log(`${LOG_PREFIX} scan: found ${visible.length} visible, ${newItems.length} new`);
+  console.log(
+    `${LOG_PREFIX} scan: found ${visible.length} visible, ${newItems.length} new` +
+      (keywordFilter.length ? `, ${filteredOut} skipped by keyword filter` : "")
+  );
 
   for (let i = 0; i < newItems.length; i += BATCH_SIZE) {
     const items = newItems.slice(i, i + BATCH_SIZE);
@@ -70,8 +84,13 @@ function refreshHighlights() {
   });
 }
 
-function startCollection(newSessionId) {
-  console.log(`${LOG_PREFIX} starting collection (session=${newSessionId})`);
+function startCollection(newSessionId, rawKeywords) {
+  keywordFilter = parseKeywords(rawKeywords);
+  console.log(
+    `${LOG_PREFIX} starting collection (session=${newSessionId}, keywords=${
+      keywordFilter.length ? keywordFilter.join(" | ") : "(none)"
+    })`
+  );
   sessionId = newSessionId;
   seenKeys.clear();
   scanAndSubmit();
@@ -93,6 +112,7 @@ function stopCollection() {
     clearInterval(highlightIntervalId);
     highlightIntervalId = null;
   }
+  keywordFilter = [];
   stopObserver();
   stopAutoScroll();
   clearHighlights();
@@ -101,7 +121,7 @@ function stopCollection() {
 // Idle until the popup tells us to start — must not auto-run on page load.
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === MESSAGE_TYPES.START_COLLECTION) {
-    startCollection(message.sessionId);
+    startCollection(message.sessionId, message.keywords);
     sendResponse({ ok: true });
   } else if (message.type === MESSAGE_TYPES.STOP_COLLECTION) {
     stopCollection();

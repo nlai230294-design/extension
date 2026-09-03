@@ -183,9 +183,60 @@ body {
 
 .control-panel {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  flex-direction: column;
+  gap: 12px;
+
+  &__filter {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  &__label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  &__input {
+    width: 100%;
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--text);
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    outline: none;
+
+    &:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+    }
+
+    &:disabled {
+      background: var(--bg);
+      color: var(--muted);
+      cursor: not-allowed;
+    }
+
+    &::placeholder {
+      color: var(--muted);
+    }
+  }
+
+  &__hint {
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--muted);
+  }
+
+  &__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
 
   &__buttons {
     display: flex;

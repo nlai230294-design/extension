@@ -96,6 +96,7 @@ function App() {
   const [viewingTabId, setViewingTabId] = useState(null); // session nào đang hiển thị kết quả trong popup
   const [results, setResults] = useState(null);
   const [riskFilter, setRiskFilter] = useState("all");
+  const [keywords, setKeywords] = useState(""); // bộ lọc từ khóa nhập trước khi bắt đầu
   const [allUsers, setAllUsers] = useState(null);
   const [allUsersFilter, setAllUsersFilter] = useState("all");
   const [error, setError] = useState(null);
@@ -232,7 +233,11 @@ function App() {
         tabId,
       });
       console.log(`${LOG_PREFIX} session created:`, data);
-      await sendToTab(tab.id, { type: MESSAGE_TYPES.START_COLLECTION, sessionId: data.session_id });
+      await sendToTab(tab.id, {
+        type: MESSAGE_TYPES.START_COLLECTION,
+        sessionId: data.session_id,
+        keywords,
+      });
       await refreshRunningSessions();
       setViewingTabId(tabId);
     } catch (err) {
@@ -355,7 +360,13 @@ function App() {
       {activeTab === "session" && (
         <>
           <section className="card">
-            <ControlPanel status={controlStatus} onStart={handleStart} onStop={handleStop} />
+            <ControlPanel
+              status={controlStatus}
+              keywords={keywords}
+              onKeywordsChange={setKeywords}
+              onStart={handleStart}
+              onStop={handleStop}
+            />
           </section>
 
           {results && (

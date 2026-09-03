@@ -21,3 +21,23 @@ export const TEXT_CONTENT_SELECTORS = [
 
 // Text labels of the "See more" expand button across languages Facebook may render.
 export const SEE_MORE_LABELS = ["Xem thêm", "See more"];
+
+// Mẫu href nhận diện permalink BÀI VIẾT thật (link thời gian đăng, link "bình
+// luận", nút chia sẻ...). Đây là link mong muốn — luôn ưu tiên lấy trước.
+export const POST_PERMALINK_PRIMARY_PATTERNS = [
+  "/posts/",
+  "/permalink/",
+  "permalink.php",
+  "story_fbid=",
+  "multi_permalinks=",
+];
+
+// Mẫu href của link ĐÍNH KÈM (ảnh/video/reel). Chỉ dùng khi không tìm được link
+// bài thật; khi đó cố suy ra permalink bài từ tham số, nếu không thì giữ link
+// đính kèm còn tham số để vẫn mở đúng.
+export const POST_ATTACHMENT_HREF_PATTERNS = [
+  "/photo",
+  "/videos/",
+  "/watch/",
+  "/reel/",
+];

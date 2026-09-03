@@ -1,14 +1,46 @@
 import { useEffect, useState } from "react";
 import { Tooltip } from "react-tooltip";
 import "react-tooltip/dist/react-tooltip.css";
-import { FiInfo } from "react-icons/fi";
+import { FiAlertTriangle, FiAlertCircle, FiCheckCircle, FiClock, FiInfo } from "react-icons/fi";
 
 import { BACKEND_BASE_URL } from "../utils/constants.js";
+
+const POSTS_LIMIT = 20;
 
 const RISK_LABEL = { low: "Thấp", medium: "Trung bình", high: "Cao" };
 
 function RiskBadge({ level }) {
   return <span className={`risk-badge risk-badge--${level}`}>{RISK_LABEL[level] ?? level}</span>;
+}
+
+const POST_RISK_ICON = {
+  high: FiAlertTriangle,
+  medium: FiAlertCircle,
+  low: FiCheckCircle,
+};
+
+// Điểm rủi ro tổng của 1 bài: icon + màu đổi theo mức độ cảnh báo. Bài chưa
+// được AI phân tích (analysis == null) hiển thị trạng thái "đang chờ".
+function PostRiskBadge({ analysis }) {
+  if (!analysis) {
+    return (
+      <span className="post-risk post-risk--pending" title="Bài chưa được phân tích">
+        <FiClock className="post-risk__icon" />
+        —
+      </span>
+    );
+  }
+  const level = analysis.risk_level;
+  const Icon = POST_RISK_ICON[level] ?? FiInfo;
+  const title =
+    `${RISK_LABEL[level] ?? level} (${analysis.overall_risk_score.toFixed(2)})` +
+    (analysis.explanation ? `\n${analysis.explanation}` : "");
+  return (
+    <span className={`post-risk post-risk--${level}`} title={title}>
+      <Icon className="post-risk__icon" />
+      {analysis.overall_risk_score.toFixed(2)}
+    </span>
+  );
 }
 
 function ScoreRow({ label, value }) {
@@ -35,6 +67,79 @@ function formatDate(iso) {
   });
 }
 
+// Bỏ dấu + hạ chữ thường 1 ký tự để so khớp không phân biệt hoa/thường VÀ
+// không phân biệt dấu tiếng Việt (é↔e, ô↔o, đ↔d...). NFD tách ký tự và dấu
+// tổ hợp rồi loại dấu; đ/Đ không phân rã nên xử lý riêng.
+function foldStr(s) {
+  return (s || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[đĐ]/g, "d")
+    .toLowerCase();
+}
+
+// Bọc các đoạn nội dung khớp từ khóa trong <mark>. Khớp không phân biệt
+// hoa/thường và dấu — trùng hành vi lọc phía server. Giữ nguyên chuỗi gốc
+// (kèm dấu) khi hiển thị bằng cách ánh xạ vị trí khớp trên chuỗi đã fold về
+// chuỗi gốc. Trả về mảng node React.
+function highlightContent(content, rawKeywords) {
+  const list = (rawKeywords || "")
+    .split(/[,\n]/)
+    .map((k) => foldStr(k.trim()))
+    .filter(Boolean);
+  if (list.length === 0) return content;
+
+  // Fold từng ký tự để giữ ánh xạ vị trí: idxMap[k] = chỉ số ký tự gốc tương
+  // ứng với ký tự thứ k trong chuỗi đã fold.
+  let folded = "";
+  const idxMap = [];
+  for (let i = 0; i < content.length; i += 1) {
+    const f = foldStr(content[i]);
+    for (const ch of f) {
+      folded += ch;
+      idxMap.push(i);
+    }
+  }
+
+  // Tìm mọi khoảng khớp (theo tọa độ chuỗi fold) cho từng từ khóa.
+  const ranges = [];
+  for (const kw of list) {
+    let from = 0;
+    let idx = folded.indexOf(kw, from);
+    while (idx !== -1) {
+      ranges.push([idx, idx + kw.length]);
+      from = idx + kw.length;
+      idx = folded.indexOf(kw, from);
+    }
+  }
+  if (ranges.length === 0) return content;
+
+  // Gộp các khoảng chồng/liền nhau rồi ánh xạ về chỉ số chuỗi gốc.
+  ranges.sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  for (const [s, e] of ranges) {
+    const last = merged[merged.length - 1];
+    if (last && s <= last[1]) last[1] = Math.max(last[1], e);
+    else merged.push([s, e]);
+  }
+
+  const nodes = [];
+  let cursor = 0;
+  merged.forEach(([fs, fe], k) => {
+    const s = idxMap[fs];
+    const e = idxMap[fe - 1] + 1;
+    if (s > cursor) nodes.push(content.slice(cursor, s));
+    nodes.push(
+      <mark key={k} className="kw-highlight">
+        {content.slice(s, e)}
+      </mark>
+    );
+    cursor = e;
+  });
+  if (cursor < content.length) nodes.push(content.slice(cursor));
+  return nodes;
+}
+
 async function apiFetch(path) {
   const res = await fetch(`${BACKEND_BASE_URL}${path}`);
   if (!res.ok) {
@@ -50,23 +155,37 @@ export default function Detail() {
   const [user, setUser] = useState(null);
   const [posts, setPosts] = useState(null);
   const [error, setError] = useState(null);
+  const [keywords, setKeywords] = useState(""); // bộ lọc từ khóa cho danh sách bài đăng
 
+  // Thông tin user + lịch sử phiên: chỉ tải 1 lần theo userId.
   useEffect(() => {
     if (!userId) {
       setError("Thiếu tham số user_id trong URL.");
       return;
     }
-
-    Promise.all([
-      apiFetch(`/api/users/${userId}`),
-      apiFetch(`/api/users/${userId}/posts?limit=100`),
-    ])
-      .then(([userDetail, postData]) => {
-        setUser(userDetail);
-        setPosts(postData);
-      })
+    apiFetch(`/api/users/${userId}`)
+      .then(setUser)
       .catch((err) => setError(err.message));
   }, [userId]);
+
+  // Danh sách bài đăng: lọc phía server theo từ khóa (tìm trên toàn bộ bài của
+  // user, kể cả >100 bài), chỉ lấy tối đa POSTS_LIMIT bài. Debounce 300ms để
+  // không gọi API mỗi lần gõ phím.
+  useEffect(() => {
+    if (!userId) return;
+    const handle = setTimeout(() => {
+      const params = new URLSearchParams({ limit: String(POSTS_LIMIT) });
+      const kw = keywords.trim();
+      if (kw) params.set("keywords", kw);
+      apiFetch(`/api/users/${userId}/posts?${params.toString()}`)
+        .then((data) => {
+          setPosts(data);
+          setError(null);
+        })
+        .catch((err) => setError(err.message));
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [userId, keywords]);
 
   if (error) {
     return (
@@ -104,6 +223,11 @@ export default function Detail() {
       risk_level: overall >= 0.7 ? "high" : overall >= 0.4 ? "medium" : "low",
     };
   })();
+
+  // Bộ lọc do server xử lý; `matched` = số bài khớp trên toàn bộ, `posts.posts`
+  // = tối đa POSTS_LIMIT bài đang hiển thị.
+  const hasFilter = keywords.trim().length > 0;
+  const shownCount = posts.posts.length;
 
   return (
     <div className="detail">
@@ -221,26 +345,70 @@ export default function Detail() {
       <section className="card">
         <h2 className="section-title">
           Bài đăng ({posts.total} tổng
-          {posts.posts.length < posts.total
-            ? `, hiển thị ${posts.posts.length}`
-            : ""}
+          {hasFilter
+            ? `, ${posts.matched} khớp bộ lọc${
+                posts.matched > shownCount ? `, hiển thị ${shownCount}` : ""
+              }`
+            : shownCount < posts.total
+              ? `, hiển thị ${shownCount}`
+              : ""}
           )
         </h2>
-        {posts.posts.length === 0 ? (
+
+        <div className="keyword-filter">
+          <input
+            type="text"
+            className="keyword-filter__input"
+            placeholder="Lọc bài đăng theo từ khóa, VD: hồ chí minh, máy bay"
+            value={keywords}
+            onChange={(e) => setKeywords(e.target.value)}
+          />
+          {hasFilter && (
+            <button
+              type="button"
+              className="keyword-filter__clear"
+              onClick={() => setKeywords("")}
+            >
+              Xóa lọc
+            </button>
+          )}
+        </div>
+
+        {posts.total === 0 ? (
           <p className="detail__empty">Chưa có bài đăng nào.</p>
+        ) : shownCount === 0 ? (
+          <p className="detail__empty">Không có bài đăng nào chứa từ khóa đã nhập.</p>
         ) : (
           <div className="comment-table__scroll">
             <table className="comment-table">
               <thead>
                 <tr>
+                  <th className="comment-table__risk-col">Rủi ro</th>
                   <th>Nội dung bài đăng</th>
+                  <th>Ngày đăng</th>
                   <th>Thời gian thu thập</th>
                 </tr>
               </thead>
               <tbody>
                 {posts.posts.map((p) => (
                   <tr key={p.post_id}>
-                    <td className="comment-table__content">{p.content}</td>
+                    <td className="comment-table__risk-col">
+                      <PostRiskBadge analysis={p.analysis} />
+                    </td>
+                    <td className="comment-table__content">
+                      <div>{hasFilter ? highlightContent(p.content, keywords) : p.content}</div>
+                      {p.post_url && (
+                        <a
+                          className="comment-table__link"
+                          href={p.post_url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Xem bài gốc ↗
+                        </a>
+                      )}
+                    </td>
+                    <td className="comment-table__time">{p.posted_at_text || "—"}</td>
                     <td className="comment-table__time">{formatDate(p.collected_at)}</td>
                   </tr>
                 ))}

@@ -1,4 +1,5 @@
 import { prisma } from "../db/prisma.js";
+import { computeOverallRiskScore, riskLevelFor } from "../utils/risk.js";
 import { createLogger } from "../utils/logger.js";
 
 const logger = createLogger("dashboard.service");
@@ -66,7 +67,17 @@ export async function listUsers({ limit, offset }) {
   return page;
 }
 
-export async function getUserPosts(userId, { limit, offset }) {
+// Tách chuỗi từ khóa nhập vào thành danh sách: phân tách theo dấu phẩy hoặc
+// xuống dòng (giữ nguyên cụm nhiều từ như "hồ chí minh"), bỏ mục rỗng.
+function parseKeywordList(raw) {
+  if (!raw || typeof raw !== "string") return [];
+  return raw
+    .split(/[,\n]/)
+    .map((k) => k.trim())
+    .filter(Boolean);
+}
+
+export async function getUserPosts(userId, { limit, offset, keywords }) {
   let id;
   try {
     id = BigInt(userId);
@@ -77,30 +88,73 @@ export async function getUserPosts(userId, { limit, offset }) {
   const user = await prisma.socialUser.findUnique({ where: { id }, select: { id: true } });
   if (!user) throw new UserNotFoundError(`User ${userId} not found`);
 
-  const [total, posts] = await Promise.all([
+  // Lọc theo từ khóa ngay trong DB (LIKE %kw%) để tìm trên TẤT CẢ bài của user,
+  // kể cả khi user có hàng trăm bài — không phụ thuộc trang đã tải về client.
+  // So khớp OR: bài chứa 1 trong các từ khóa là đạt. LIKE của MySQL không phân
+  // biệt hoa/thường theo collation mặc định (utf8mb4 *_ci).
+  const keywordList = parseKeywordList(keywords);
+  const where = { user_id: id };
+  if (keywordList.length > 0) {
+    where.OR = keywordList.map((kw) => ({ content: { contains: kw } }));
+  }
+
+  const [total, matched, posts] = await Promise.all([
     prisma.post.count({ where: { user_id: id } }),
+    keywordList.length > 0 ? prisma.post.count({ where }) : null,
     prisma.post.findMany({
-      where: { user_id: id },
-      include: { session: { select: { session_uuid: true, source_url: true } } },
+      where,
+      include: {
+        session: { select: { session_uuid: true, source_url: true } },
+        analysis: true,
+      },
       orderBy: { collected_at: "desc" },
       take: limit,
       skip: offset,
     }),
   ]);
 
-  logger.info(`User ${userId}: ${posts.length}/${total} post(s) (limit=${limit}, offset=${offset})`);
+  logger.info(
+    `User ${userId}: ${posts.length}/${matched ?? total} post(s)` +
+      (keywordList.length ? ` matching [${keywordList.join(", ")}]` : "") +
+      ` (limit=${limit}, offset=${offset}, total=${total})`
+  );
 
   return {
     total,
+    // Số bài khớp bộ lọc (bằng total khi không lọc) — client dùng để hiển thị
+    // "N khớp bộ lọc" và biết còn bài chưa hiển thị hay không.
+    matched: matched ?? total,
     posts: posts.map((p) => ({
       post_id: p.id.toString(),
       content: p.content,
       post_url: p.post_url,
       source_url: p.source_url,
+      posted_at_text: p.posted_at_text,
       session_id: p.session.session_uuid,
       session_source_url: p.session.source_url,
       collected_at: p.collected_at,
+      // Điểm rủi ro của riêng bài này (null nếu chưa được AI phân tích).
+      analysis: buildPostAnalysis(p.analysis),
     })),
+  };
+}
+
+// Tính điểm rủi ro tổng + mức độ cho 1 bài từ bản ghi post_analysis (nếu có).
+function buildPostAnalysis(analysis) {
+  if (!analysis) return null;
+  const scores = {
+    toxicity: Number(analysis.toxicity_score),
+    spam: Number(analysis.spam_score),
+    manipulation: Number(analysis.manipulation_score),
+    extremism_risk: Number(analysis.extremism_risk_score),
+  };
+  const overall_risk_score = computeOverallRiskScore(scores);
+  return {
+    overall_risk_score,
+    risk_level: riskLevelFor(overall_risk_score),
+    label: analysis.label,
+    explanation: analysis.explanation,
+    ...scores,
   };
 }
 
